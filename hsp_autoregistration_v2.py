@@ -276,6 +276,8 @@ class HochschulsportBookingApp:
         options = Options()
         # actually show whats happening
         # options.add_argument('--headless')
+        # emulate phone browser
+        options.add_argument('--user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 10_3 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) CriOS/56.0.2924.75 Mobile/14E5239e Safari/602.1')
         current_dir = os.path.dirname(os.path.realpath(__file__))
         
         if os_type == 'mac_x64':
