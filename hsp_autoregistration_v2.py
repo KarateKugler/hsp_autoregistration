@@ -145,16 +145,9 @@ class HochschulsportBookingApp:
 
         url_label = ttk.Label(request_frame, text="Hochschulsport URL:")
         url_label.grid(row=0, column=0, padx=5, pady=5, sticky='e')
-        self.url_var = tk.StringVar(value="https://buchung.hsp.uni-tuebingen.de/angebote/aktueller_zeitraum/_Passwort_erstellen.html")
+        self.url_var = tk.StringVar(value="https://buchung.hsp.uni-tuebingen.de/angebote/aktueller_zeitraum/m.html#/cgi/anmeldung.fcgi?mode=mobile&page=DET_52285")
         url_entry = ttk.Entry(request_frame, textvariable=self.url_var, width=50)
         url_entry.grid(row=0, column=1, padx=5, pady=5, sticky='w')
-
-        # add course number field
-        course_number_label = ttk.Label(request_frame, text="Course Number:")
-        course_number_label.grid(row=0, column=2, padx=5, pady=5, sticky='e')
-        self.course_number_var = tk.StringVar()
-        course_number_entry = ttk.Entry(request_frame, textvariable=self.course_number_var, width=10)
-        course_number_entry.grid(row=0, column=3, padx=5, pady=5, sticky='w')
 
         start_time_label = ttk.Label(request_frame, text="Start Time (HH:MM:SS):")
         start_time_label.grid(row=1, column=0, padx=5, pady=5, sticky='e')
@@ -238,7 +231,6 @@ class HochschulsportBookingApp:
 
         url = self.url_var.get().strip()
         start_time_str = self.start_time_var.get().strip()
-        course_number = self.course_number_var.get().strip()
 
         if not url:
             messagebox.showwarning("Input Required", "Please enter the Hochschulsport URL.")
@@ -260,7 +252,6 @@ class HochschulsportBookingApp:
             "user_data": user_data,
             "url": url,
             "start_time": start_time_str,
-            "course_number": course_number
         }
 
         # Start the booking process
@@ -269,14 +260,13 @@ class HochschulsportBookingApp:
     def start_booking_process(self, collected_data):
         self.setup_webdriver(collected_data['os'])
         self.wait_until_booking_time(collected_data['start_time'])
-        self.refresh_booking_page(collected_data['course_number'])
         self.perform_booking(collected_data)
 
     def setup_webdriver(self, os_type):
         options = Options()
         # actually show whats happening
         # options.add_argument('--headless')
-        # emulate phone browser
+        # emulate phone browser!!!
         options.add_argument('--user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 10_3 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) CriOS/56.0.2924.75 Mobile/14E5239e Safari/602.1')
         current_dir = os.path.dirname(os.path.realpath(__file__))
         
@@ -284,7 +274,7 @@ class HochschulsportBookingApp:
             cService = webdriver.ChromeService(executable_path=os.path.join(current_dir, 'chromedriver_macx64'))
         if os_type == 'mac_arm64':
             cService = webdriver.ChromeService(executable_path=os.path.join(current_dir, 'chromedriver_macarm64'))
-        else:  # macx64
+        else:  # windows
             cService = webdriver.ChromeService(executable_path=os.path.join(current_dir, 'chromedriver_win32.exe'))
         self.driver = webdriver.Chrome(service=cService, options=options)
         self.driver.maximize_window()
@@ -300,39 +290,20 @@ class HochschulsportBookingApp:
                     break
             time.sleep(1)
 
-
-    def refresh_booking_page(self, course_number=''):
-        max_attempts = 300  # 5 minutes of attempts
-        attempt = 0
-
-        self.handle_cookie_popup()
-
-        while attempt < max_attempts:
-            try:
-                if course_number:
-                    # Look for the specific course number
-                    xpath = f"//td[@class='bs_sbuch']/a[@id='K{course_number}']/following-sibling::input[@type='submit']"
-                else:
-                    # Look for any submit button in the booking column
-                    xpath = "//td[@class='bs_sbuch']//input[@type='submit']"
-                
-                submit_button = self.driver.find_element(By.XPATH, xpath)
-                
-                if submit_button.is_displayed() and submit_button.is_enabled():
-                    print(f"Submit button found after {attempt} attempts.")
-                    return submit_button
-            except Exception as e:
-                print(f"Attempt {attempt + 1}: Submit button not found. Refreshing...")
-            
-            time.sleep(1)  # Wait for 1 second before refreshing
-            self.driver.refresh()
-            attempt += 1
-        
-        raise Exception("Booking button did not appear within the allocated time.")
-
     def perform_booking(self, collected_data):
+        self.handle_cookie_popup()
         try:
-            self.click_booking_button()
+            # refresh until booking button appears and click
+            self.refresh_booking_page().click()
+
+            # Wait for the new tab to open
+            WebDriverWait(self.driver, 10).until(EC.number_of_windows_to_be(2))
+            
+            # Switch to the new tab
+            self.driver.switch_to.window(self.driver.window_handles[-1])
+            
+            # Wait for the new page to load
+            WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             
             if collected_data['user_data']['option'] == 'email_password':
                 self.fill_form_option_1(collected_data['user_data'])
@@ -346,6 +317,29 @@ class HochschulsportBookingApp:
         finally:
             pass
 
+
+    def refresh_booking_page(self):
+        max_attempts = 300  # 5 minutes of attempts
+        attempt = 0
+
+        while attempt < max_attempts:
+            try:
+                # Look for any submit button              
+                submit_button = self.driver.find_element(By.XPATH, "//input[@type='submit' and @value='buchen']")
+                
+                if submit_button.is_displayed() and submit_button.is_enabled():
+                    print(f"Submit button found after {attempt} attempts.")
+                    return submit_button
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Submit button not found. Refreshing...")
+            
+            time.sleep(1)  # Wait for 1 second before refreshing
+            self.driver.refresh()
+            attempt += 1
+        
+        raise Exception("Booking button did not appear within the allocated time.")
+
+
     def handle_cookie_popup(self):
         try:
             # Wait for the cookie popup to appear
@@ -353,7 +347,7 @@ class HochschulsportBookingApp:
                 EC.element_to_be_clickable((By.XPATH, "//button[@data-in2-modal-accept-button and contains(text(), 'Alle akzeptieren')]"))
             )
             cookie_button.click()
-            time.sleep(1)
+            time.sleep(2)
         except Exception as e:
             print(f"No cookie popup found or error occurred: {str(e)}")
 
@@ -404,7 +398,7 @@ class HochschulsportBookingApp:
         self.driver.find_element(By.CSS_SELECTOR, 'input.sub[type="submit"]').click()
 
         WebDriverWait(self.driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, 'input.sub[type="submit"][value="verbindlich buchen"]'))
+            EC.element_to_be_clickable((By.CSS_SELECTOR, 'input.sub[type="submit"]'))
         ).click()
 
     def on_closing(self):
